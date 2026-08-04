@@ -1,25 +1,32 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
-import {
-  type Booking,
-  getWeekDays,
-  toISODate,
-} from "@/lib/cleanq-data"
+import { type Booking } from "@/lib/cleanq-data"
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+interface WeekScheduleProps {
+  bookings?: Booking[]
+  selectedDate?: string | null
+  onSelectDate?: (date: string | null) => void
+}
 
-export function WeekSchedule({ bookings }: { bookings: Booking[] }) {
-  const week = getWeekDays()
-  // Compute "today" only after mount to avoid SSR/client hydration mismatches
-  // caused by timezone/timing differences.
-  const [todayISO, setTodayISO] = useState<string | null>(null)
+export function WeekSchedule({ bookings = [], selectedDate, onSelectDate }: WeekScheduleProps) {
+  // ฟังก์ชันสร้างวันที่ 7 วันล่วงหน้า
+  const getNext7Days = () => {
+    const days = []
+    const today = new Date()
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today)
+      d.setDate(today.getDate() + i)
+      days.push({
+        fullDate: d.toISOString().split('T')[0],
+        dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        dateNum: d.getDate().toString()
+      })
+    }
+    return days
+  }
 
-  useEffect(() => {
-    setTodayISO(toISODate(new Date()))
-  }, [])
+  const weekDays = getNext7Days()
 
   return (
     <Card className="rounded-3xl border-transparent shadow-[0_8px_30px_-12px_rgba(44,84,70,0.25)]">
@@ -27,53 +34,36 @@ export function WeekSchedule({ bookings }: { bookings: Booking[] }) {
         <CardTitle className="text-lg">7-Day Schedule</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-          {week.map((day, i) => {
-            const dayISO = toISODate(day)
-            const isToday = dayISO === todayISO
-            const slots = bookings
-              .filter((b) => b.date === dayISO)
-              .sort((a, b) => a.time.localeCompare(b.time))
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          {weekDays.map((d) => {
+            const jobsCount = bookings.filter((b) => b.date === d.fullDate).length
+            const isSelected = selectedDate === d.fullDate
 
             return (
               <div
-                key={dayISO}
-                className={cn(
-                  "flex min-h-44 flex-col gap-2 rounded-2xl border p-3",
-                  isToday ? "border-primary/40 bg-primary/5" : "border-border bg-muted/40",
-                )}
+                key={d.fullDate}
+                // ถ้ากดการ์ดเดิมซ้ำ ให้ส่งค่า null ไปเพื่อยกเลิก Filter
+                onClick={() => onSelectDate?.(isSelected ? null : d.fullDate)}
+                className={`flex flex-col p-4 rounded-2xl border transition-all cursor-pointer ${
+                  isSelected 
+                    ? "bg-primary text-primary-foreground border-primary shadow-md transform scale-[1.02]" 
+                    : "bg-muted/10 border-border hover:border-primary/40 hover:bg-muted/30"
+                }`}
               >
-                <div className="flex items-baseline justify-between">
-                  <span
-                    className={cn(
-                      "text-sm font-semibold",
-                      isToday ? "text-primary" : "text-foreground",
-                    )}
-                  >
-                    {DAY_LABELS[i]}
+                <div className="flex justify-between items-start w-full mb-4">
+                  <span className={`font-medium ${isSelected ? "text-primary-foreground" : "text-foreground"}`}>
+                    {d.dayName}
                   </span>
-                  <span className="text-xs text-muted-foreground">{day.getDate()}</span>
+                  <span className={`text-sm ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    {d.dateNum}
+                  </span>
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  {slots.length === 0 && (
-                    <span className="text-xs text-muted-foreground/70">No jobs</span>
-                  )}
-                  {slots.map((s) => (
-                    <div
-                      key={s.id}
-                      className={cn(
-                        "rounded-xl px-2.5 py-2 text-xs leading-tight",
-                        s.status === "pending"
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-primary text-primary-foreground",
-                      )}
-                    >
-                      <div className="font-semibold">{s.time}</div>
-                      <div className="truncate opacity-90">{s.customer}</div>
-                    </div>
-                  ))}
-                </div>
+                <span className={`text-xs mt-auto font-medium ${
+                  isSelected ? "text-primary-foreground/90" 
+                  : jobsCount > 0 ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  {jobsCount > 0 ? `${jobsCount} jobs` : "No jobs"}
+                </span>
               </div>
             )
           })}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 import {
   Dialog,
   DialogClose,
@@ -22,14 +23,21 @@ import {
   FieldLegend,
 } from "@/components/ui/field"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { PlusIcon } from "lucide-react"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import { PlusIcon, Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+
 import {
   type Booking,
   ADD_ONS,
@@ -45,11 +53,16 @@ export function AddBookingDialog({
   onAdd: (booking: Omit<Booking, "id">) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [customer, setCustomer] = useState("")
+  const [customer, setCustomer] = useState("") 
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+  
+  // State สำหรับ Location Autocomplete (Combobox)
+  const [openLocation, setOpenLocation] = useState(false)
   const [location, setLocation] = useState("")
+  
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const total = BASE_PRICE + addOnsTotal(selectedAddOns)
   const isValid = customer.trim() && date && time && location
@@ -68,20 +81,51 @@ export function AddBookingDialog({
     )
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!isValid) return
-    const booking: Omit<Booking, "id"> = {
-      customer: customer.trim(),
-      date,
-      time,
-      location,
-      basePrice: BASE_PRICE,
-      addOns: selectedAddOns,
-      status: "pending",
+    setIsSubmitting(true)
+
+    try {
+      const scheduledAt = new Date(`${date}T${time}`).toISOString()
+      
+      // Payload ที่อัปเดตให้ตรงกับ Database 100%
+      const newBookingData = {
+        customer_name: customer.trim(),
+        scheduled_at: scheduledAt,
+        location: location,
+        base_price: BASE_PRICE,
+        add_ons: selectedAddOns,
+        total_price: total, // ส่งราคารวมเข้า Database 
+        status: "pending", // ค่า Default เริ่มต้น
+      }
+
+      const { error } = await supabase
+        .from('bookings')
+        .insert([newBookingData])
+
+      if (error) throw error
+
+      // ข้อมูลสำหรับเอาไปแสดงบนหน้า UI ทันทีหลังกด Save (แบบไม่ต้องรอโหลดหน้าใหม่)
+      const bookingForUI: Omit<Booking, "id"> = {
+        customer: customer.trim(),
+        date,
+        time,
+        location,
+        basePrice: BASE_PRICE,
+        addOns: selectedAddOns,
+        status: "pending",
+      }
+      
+      onAdd(bookingForUI)
+      reset()
+      setOpen(false)
+
+    } catch (error) {
+      console.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล:", error)
+      alert("ไม่สามารถบันทึกการจองได้ กรุณาลองเช็คข้อมูลอีกครั้งครับ")
+    } finally {
+      setIsSubmitting(false)
     }
-    onAdd(booking)
-    reset()
-    setOpen(false)
   }
 
   return (
@@ -111,6 +155,7 @@ export function AddBookingDialog({
 
         <div className="max-h-[60vh] overflow-y-auto px-0.5 py-1">
           <FieldGroup>
+            
             <Field>
               <FieldLabel htmlFor="customer">Customer Name</FieldLabel>
               <Input
@@ -145,22 +190,48 @@ export function AddBookingDialog({
               </Field>
             </Field>
 
+            {/* Location Combobox (Autocomplete) */}
             <Field>
               <FieldLabel>Location</FieldLabel>
-              <Select value={location} onValueChange={setLocation}>
-                <SelectTrigger className="h-11 w-full rounded-xl px-4">
-                  <SelectValue placeholder="Select a location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {LOCATIONS.map((loc) => (
-                      <SelectItem key={loc} value={loc}>
-                        {loc}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <Popover open={openLocation} onOpenChange={setOpenLocation}>
+                <PopoverTrigger
+                  role="combobox"
+                  aria-expanded={openLocation}
+                  className="inline-flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-4 text-sm font-normal shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {location ? location : "Search a location..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </PopoverTrigger>
+                
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search location..." />
+                    <CommandList>
+                      <CommandEmpty>No location found.</CommandEmpty>
+                      <CommandGroup>
+                        {LOCATIONS.map((loc) => (
+                          <CommandItem
+                            key={loc}
+                            value={loc}
+                            onSelect={() => {
+                              setLocation(loc)
+                              setOpenLocation(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                location === loc ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {loc}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </Field>
 
             <FieldSet>
@@ -201,15 +272,15 @@ export function AddBookingDialog({
             </span>
           </div>
           <div className="flex gap-2">
-            <DialogClose render={<Button variant="outline" className="h-11 rounded-full px-5" />}>
+            <DialogClose render={<Button variant="outline" className="h-11 rounded-full px-5" disabled={isSubmitting} />}>
               Cancel
             </DialogClose>
             <Button
               onClick={handleSubmit}
-              disabled={!isValid}
+              disabled={!isValid || isSubmitting}
               className="h-11 rounded-full px-6 font-semibold"
             >
-              Save Booking
+              {isSubmitting ? "Saving..." : "Save Booking"}
             </Button>
           </div>
         </DialogFooter>

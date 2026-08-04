@@ -12,7 +12,8 @@ export const ADD_ONS: AddOn[] = [
   { id: "oven", label: "Inside Oven", price: 22 },
 ]
 
-export const LOCATIONS = [
+// เปลี่ยนให้ LOCATIONS เป็นแบบเปิดที่แก้ไข/เพิ่ม-ลด ผ่านระบบได้
+export let LOCATIONS = [
   "Downtown",
   "Riverside",
   "Hillcrest",
@@ -20,6 +21,11 @@ export const LOCATIONS = [
   "Seaview",
   "Maple Park",
 ]
+
+// ฟังก์ชันสำหรับอัปเดตรายชื่อเมืองจากหน้า Settings
+export function updateLocations(newLocations: string[]) {
+  LOCATIONS = newLocations
+}
 
 export const BASE_PRICE = 80
 
